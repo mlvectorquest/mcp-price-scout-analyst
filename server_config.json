@@ -1,12 +1,19 @@
 {
-    "mcpServers": {        
+    "mcpServers": {
         "llm_inference": {
             "command": "uv",
-            "args": ["run", "mcp-project/server.py"]
+            "args": [
+                "run",
+                "starter_server.py"
+            ]
         },
         "sqlite": {
             "command": "uvx",
-            "args": ["mcp-server-sqlite", "--db-path", "./test.db"]
+            "args": [
+                "mcp-server-sqlite",
+                "--db-path",
+                "./test.db"
+            ]
         },
         "filesystem": {
             "command": "npx",

@@ -51,7 +51,13 @@ class Configuration:
             JSONDecodeError: If configuration file is invalid JSON.
             ValueError: If configuration file is missing required fields.
         """
-        # complete
+        with open(file_path, "r") as f:
+            config = json.load(f)
+
+        if "mcpServers" not in config:
+            raise ValueError("Configuration file is missing required field 'mcpServers'")
+
+        return config
 
     @property
     def anthropic_api_key(self) -> str:
@@ -85,8 +91,11 @@ class Server:
         if command is None:
             raise ValueError("The command must be a valid string and cannot be None.")
 
-        # complete params
-        server_params = StdioServerParameters()
+        server_params = StdioServerParameters(
+            command=command,
+            args=self.config["args"],
+            env={**os.environ, **self.config["env"]} if self.config.get("env") else None,
+        )
         try:
             stdio_transport = await self.exit_stack.enter_async_context(stdio_client(server_params))
             read, write = stdio_transport

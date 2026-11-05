@@ -1,3 +1,4 @@
+import ast
 import asyncio
 import json
 import logging
@@ -117,7 +118,21 @@ class Server:
         Raises:
             RuntimeError: If the server is not initialized.
         """
-        # complete
+        if not self.session:
+            raise RuntimeError(f"Server {self.name} not initialized")
+
+        tools_response = await self.session.list_tools()
+
+        tools: List[ToolDefinition] = []
+        for tool in tools_response.tools:
+            tool_def: ToolDefinition = {
+                "name": tool.name,
+                "description": tool.description,
+                "input_schema": tool.inputSchema,
+            }
+            tools.append(tool_def)
+
+        return tools
 
     async def execute_tool(
         self,
@@ -141,7 +156,27 @@ class Server:
             RuntimeError: If server is not initialized.
             Exception: If tool execution fails after all retries.
         """
-        # complete
+        if not self.session:
+            raise RuntimeError(f"Server {self.name} not initialized")
+
+        attempt = 0
+        while attempt <= retries:
+            try:
+                logging.info(f"Executing {tool_name}...")
+                result = await self.session.call_tool(
+                    name=tool_name,
+                    arguments=arguments,
+                    read_timeout_seconds=timedelta(seconds=60),
+                )
+                return result
+            except Exception as e:
+                attempt += 1
+                logging.warning(f"Error executing tool: {e}. Attempt {attempt} of {retries + 1}.")
+                if attempt > retries:
+                    logging.error("Max retries reached. Failing.")
+                    raise
+                logging.info(f"Retrying in {delay} seconds...")
+                await asyncio.sleep(delay)
 
     async def cleanup(self) -> None:
         """Clean up server resources."""
@@ -241,8 +276,26 @@ class DataExtractor:
             extraction_response = extraction_response.replace("```json\n", "").replace("```", "")
             pricing_data = json.loads(extraction_response)
             
+            def esc(value: Any) -> str:
+                """Escape single quotes so values can't break out of the SQL string."""
+                return str(value).replace("'", "''")
+
             for plan in pricing_data.get("plans", []):
-                # complete
+                await self.sqlite_server.execute_tool("write_query", {
+                    "query": f"""
+                    INSERT INTO pricing_plans (company_name, plan_name, input_tokens, output_tokens, currency, billing_period, features, limitations, source_query)
+                    VALUES (
+                        '{esc(pricing_data.get("company_name", "Unknown"))}',
+                        '{esc(plan.get("plan_name", "Unknown Plan"))}',
+                        '{esc(plan.get("input_tokens", 0))}',
+                        '{esc(plan.get("output_tokens", 0))}',
+                        '{esc(plan.get("currency", "USD"))}',
+                        '{esc(plan.get("billing_period", "unknown"))}',
+                        '{esc(json.dumps(plan.get("features", [])))}',
+                        '{esc(plan.get("limitations", ""))}',
+                        '{esc(user_query)}')
+                    """
+                })
             
             logger.info(f"Stored {len(pricing_data.get('plans', []))} pricing plans")
             
@@ -274,7 +327,7 @@ class ChatSession:
         messages = [{'role': 'user', 'content': query}]
         response = self.anthropic.messages.create(
             max_tokens=2024,
-            model='<ENTER_MODEL_NAME>', 
+            model='claude-sonnet-4-5-20250929',
             tools=self.available_tools,
             messages=messages
         )
@@ -286,14 +339,57 @@ class ChatSession:
         process_query = True
         while process_query:
             assistant_content = []
+            tool_results = []
             for content in response.content:
                 if content.type == 'text':
-                    # complete
+                    full_response += content.text + "\n"
+                    assistant_content.append(content)
+                    if len(response.content) == 1:
+                        process_query = False
                 elif content.type == 'tool_use':
-                    # complete
+                    assistant_content.append(content)
+
+                    server = self._find_server_for_tool(content.name)
+                    result = await server.execute_tool(content.name, content.input)
+                    result_text = "\n".join(
+                        block.text for block in result.content if getattr(block, "text", None)
+                    )
+
+                    url = self._extract_url_from_result(result_text)
+                    if url:
+                        source_url = url
+                        used_web_search = True
+
+                    tool_results.append({
+                        'type': 'tool_result',
+                        'tool_use_id': content.id,
+                        'content': result_text,
+                    })
+
+            if tool_results:
+                # All tool_use blocks of one response go in a single assistant
+                # message, answered by a single user message of tool_results.
+                messages.append({'role': 'assistant', 'content': assistant_content})
+                messages.append({'role': 'user', 'content': tool_results})
+                response = self.anthropic.messages.create(
+                    max_tokens=2024,
+                    model='claude-sonnet-4-5-20250929',
+                    tools=self.available_tools,
+                    messages=messages
+                )
+            else:
+                process_query = False
         
         if self.data_extractor and full_response.strip():
             await self.data_extractor.extract_and_store_data(query, full_response.strip(), source_url)
+
+    def _find_server_for_tool(self, tool_name: str) -> Server:
+        """Return the server that provides the given tool."""
+        server_name = self.tool_to_server.get(tool_name)
+        for server in self.servers:
+            if server.name == server_name:
+                return server
+        raise ValueError(f"No server found for tool '{tool_name}'")
 
     def _extract_url_from_result(self, result_text: str) -> str | None:
         """Extract URL from tool result."""
@@ -332,9 +428,29 @@ class ChatSession:
             return
             
         try:
-            # complete
+            pricing = await self.sqlite_server.execute_tool("read_query", {
+                "query": "SELECT company_name, plan_name, input_tokens, output_tokens, currency FROM pricing_plans ORDER BY created_at DESC LIMIT 5"
+            })
+
+            print("\nRecently Stored Data:")
+            print("=" * 50)
+
+            print("\nPricing Plans:")
+            rows = self._parse_rows(pricing.content[0].text)
+            for plan in rows:
+                print(f"{plan['company_name']}: {plan['plan_name']} - Input Token ${plan['input_tokens']}, Output Tokens ${plan['output_tokens']}")
+
+            print("=" * 50)
         except Exception as e:
             print(f"Error showing data: {e}")
+
+    @staticmethod
+    def _parse_rows(text: str) -> list[dict]:
+        """Parse the SQLite server's rows, which may be JSON or a Python-style list."""
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            return ast.literal_eval(text)
 
     async def start(self) -> None:
         """Main chat session handler."""

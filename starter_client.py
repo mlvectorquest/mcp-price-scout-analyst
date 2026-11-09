@@ -18,6 +18,18 @@ from mcp.client.stdio import stdio_client
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
+SYSTEM_PROMPT = """You are a competitor pricing analyst with access to a web scraper, a SQLite database and a filesystem.
+
+Before calling scrape_websites, ALWAYS check for data that is already saved:
+1. Call extract_scraped_info for each provider mentioned (by provider name, URL or domain). This holds the full scraped page content and the URL that was scraped.
+2. Query the SQLite pricing_plans table with read_query for any previously extracted prices.
+
+Rules:
+- If saved data exists for a provider, answer from it. Do NOT call scrape_websites again.
+- Only call scrape_websites for providers with no saved data, or when the user explicitly asks you to scrape, re-scrape or refresh.
+- When you do scrape, use the exact URLs the user gave or the URLs stored in the saved metadata. Do not substitute homepages for pricing pages.
+- For follow-up and comparison questions, rely on the stored data and say clearly when a requested model or price is not present in it."""
+
 class ToolDefinition(TypedDict):
     name: str
     description: str
@@ -329,6 +341,7 @@ class ChatSession:
         response = self.anthropic.messages.create(
             max_tokens=2024,
             model='claude-sonnet-4-5-20250929',
+            system=SYSTEM_PROMPT,
             tools=self.available_tools,
             messages=messages
         )
@@ -376,6 +389,7 @@ class ChatSession:
                 response = self.anthropic.messages.create(
                     max_tokens=2024,
                     model='claude-sonnet-4-5-20250929',
+                    system=SYSTEM_PROMPT,
                     tools=self.available_tools,
                     messages=messages
                 )
@@ -437,10 +451,26 @@ class ChatSession:
             print("\nRecently Stored Data:")
             print("=" * 50)
 
+            # The SQL query above already applies LIMIT 5; slicing to 5 here is an
+            # extra safeguard so the table never shows more than 5 rows.
+            rows = self._parse_rows(pricing.content[0].text)[:5]
+
+            headers = ["Company", "Plan", "Input Tokens", "Output Tokens"]
+            table = [
+                [str(plan['company_name']), str(plan['plan_name']),
+                 f"${plan['input_tokens']}", f"${plan['output_tokens']}"]
+                for plan in rows
+            ]
+            widths = [max(len(cell) for cell in column) for column in zip(headers, *table)]
+
+            def format_row(cells: list[str]) -> str:
+                return "| " + " | ".join(cell.ljust(w) for cell, w in zip(cells, widths)) + " |"
+
             print("\nPricing Plans:")
-            rows = self._parse_rows(pricing.content[0].text)
-            for plan in rows:
-                print(f"{plan['company_name']}: {plan['plan_name']} - Input Token ${plan['input_tokens']}, Output Tokens ${plan['output_tokens']}")
+            print(format_row(headers))
+            print("|" + "|".join("-" * (w + 2) for w in widths) + "|")
+            for cells in table:
+                print(format_row(cells))
 
             print("=" * 50)
         except Exception as e:

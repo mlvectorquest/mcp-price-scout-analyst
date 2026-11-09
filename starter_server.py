@@ -159,14 +159,14 @@ def extract_scraped_info(identifier: str) -> str:
     """
     
     logger.info(f"Extracting information for identifier: {identifier}")
-    logger.info(f"Files in {SCRAPE_DIR}: {os.listdir(SCRAPE_DIR)}")
-
-    metadata_file = os.path.join(SCRAPE_DIR, "scraped_metadata.json")
-    logger.info(f"Checking metadata file: {metadata_file}")
-
     not_found = f"There's no saved information related to identifier '{identifier}'."
 
     try:
+        logger.info(f"Files in {SCRAPE_DIR}: {os.listdir(SCRAPE_DIR)}")
+
+        metadata_file = os.path.join(SCRAPE_DIR, "scraped_metadata.json")
+        logger.info(f"Checking metadata file: {metadata_file}")
+
         metadata = _find_metadata(_load_metadata(metadata_file), identifier)
         if metadata is None:
             return not_found

@@ -308,6 +308,7 @@ class ChatSession:
 
     def __init__(self, servers: list[Server], api_key: str) -> None:
         self.servers: list[Server] = servers
+        # base_url is read from the ANTHROPIC_BASE_URL environment variable
         self.anthropic = Anthropic(api_key=api_key)
         self.available_tools: List[ToolDefinition] = []
         self.tool_to_server: Dict[str, str] = {}
@@ -342,6 +343,7 @@ class ChatSession:
             tool_results = []
             for content in response.content:
                 if content.type == 'text':
+                    print(content.text)
                     full_response += content.text + "\n"
                     assistant_content.append(content)
                     if len(response.content) == 1:

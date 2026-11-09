@@ -1,0 +1,70 @@
+{
+    "cloudrift": {
+        "provider_name": "cloudrift",
+        "url": "https://cloudrift.ai",
+        "domain": "cloudrift.ai",
+        "scraped_at": "2026-11-09T16:33:51.116221",
+        "formats": [
+            "markdown",
+            "html"
+        ],
+        "success": "true",
+        "content_files": {
+            "markdown": "cloudrift_markdown.txt",
+            "html": "cloudrift_html.txt"
+        },
+        "title": "CloudRift \u2014 Sovereign AI Platform for Enterprise Deployments",
+        "description": "Sovereign AI platform for enterprise GPU infrastructure. Run LLM inference on-premise or in your security perimeter with full data sovereignty."
+    },
+    "deepinfra": {
+        "provider_name": "deepinfra",
+        "url": "https://deepinfra.com",
+        "domain": "deepinfra.com",
+        "scraped_at": "2026-11-09T16:33:52.660524",
+        "formats": [
+            "markdown",
+            "html"
+        ],
+        "success": "true",
+        "content_files": {
+            "markdown": "deepinfra_markdown.txt",
+            "html": "deepinfra_html.txt"
+        },
+        "title": "Machine Learning Models and Infrastructure | DeepInfra",
+        "description": "DeepInfra offers cost-effective, scalable, easy-to-deploy, and production-ready machine-learning models and infrastructures for deep-learning models."
+    },
+    "fireworks": {
+        "provider_name": "fireworks",
+        "url": "https://fireworks.ai/pricing#serverless-pricing",
+        "domain": "fireworks.ai",
+        "scraped_at": "2026-11-09T16:27:11.113694",
+        "formats": [
+            "markdown",
+            "html"
+        ],
+        "success": "true",
+        "content_files": {
+            "markdown": "fireworks_markdown.txt",
+            "html": "fireworks_html.txt"
+        },
+        "title": "Pricing | Fireworks",
+        "description": "Fireworks pricing for inference, training, and Nexus. Pay per token on Serverless, reserve throughput as you scale, or run in your own cloud. See every rate."
+    },
+    "groq": {
+        "provider_name": "groq",
+        "url": "https://groq.com/pricing",
+        "domain": "groq.com",
+        "scraped_at": "2026-11-09T16:27:13.009277",
+        "formats": [
+            "markdown",
+            "html"
+        ],
+        "success": "true",
+        "content_files": {
+            "markdown": "groq_markdown.txt",
+            "html": "groq_html.txt"
+        },
+        "title": "Groq is the premier neocloud for fast inference",
+        "description": "Groq is the premier neocloud for fast inference. One fully integrated platform for infrastructure, inference, and control. Millions of developers run trillions of tokens on Groq every week."
+    }
+}

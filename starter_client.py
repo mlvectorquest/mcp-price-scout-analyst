@@ -18,15 +18,21 @@ from mcp.client.stdio import stdio_client
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
+# Scraped pages (especially the raw HTML) can be hundreds of KB. Cap what is sent
+# back to the model per tool result so several lookups cannot exceed its context window.
+MAX_TOOL_RESULT_CHARS = 40_000
+
 SYSTEM_PROMPT = """You are a competitor pricing analyst with access to a web scraper, a SQLite database and a filesystem.
 
-Before calling scrape_websites, ALWAYS check for data that is already saved:
-1. Call extract_scraped_info for each provider mentioned (by provider name, URL or domain). This holds the full scraped page content and the URL that was scraped.
-2. Query the SQLite pricing_plans table with read_query for any previously extracted prices.
+Before calling scrape_websites, ALWAYS check for data that is already saved, in this order:
+1. SQLite first: call read_query on the pricing_plans table (columns: company_name, plan_name, input_tokens, output_tokens, currency, billing_period, features, limitations, source_query) for the providers and models in the question. Match company names loosely, e.g. WHERE company_name LIKE '%deepinfra%' AND plan_name LIKE '%deepseek%'. If the rows answer the question, answer from them.
+2. If the database has no matching rows, call extract_scraped_info for each provider mentioned (by provider name, URL or domain). This holds the full scraped page content and the URL that was scraped.
+3. Only if neither source has data for a provider may you consider scraping.
 
 Rules:
 - If saved data exists for a provider, answer from it. Do NOT call scrape_websites again.
 - Only call scrape_websites for providers with no saved data, or when the user explicitly asks you to scrape, re-scrape or refresh.
+- Only look up the providers the question is about, one at a time. Saved pages are large.
 - When you do scrape, use the exact URLs the user gave or the URLs stored in the saved metadata. Do not substitute homepages for pricing pages.
 - For follow-up and comparison questions, rely on the stored data and say clearly when a requested model or price is not present in it."""
 
@@ -375,6 +381,13 @@ class ChatSession:
                         source_url = url
                         used_web_search = True
 
+                    if len(result_text) > MAX_TOOL_RESULT_CHARS:
+                        logger.info(
+                            f"Truncating {content.name} result from {len(result_text)} "
+                            f"to {MAX_TOOL_RESULT_CHARS} characters for the model"
+                        )
+                        result_text = result_text[:MAX_TOOL_RESULT_CHARS] + "\n...[truncated]"
+
                     tool_results.append({
                         'type': 'tool_result',
                         'tool_use_id': content.id,
@@ -455,10 +468,14 @@ class ChatSession:
             # extra safeguard so the table never shows more than 5 rows.
             rows = self._parse_rows(pricing.content[0].text)[:5]
 
+            def price(value: Any) -> str:
+                """Format a token price, showing N/A when none was extracted."""
+                return "N/A" if value in (None, "", "None") else f"${value}"
+
             headers = ["Company", "Plan", "Input Tokens", "Output Tokens"]
             table = [
                 [str(plan['company_name']), str(plan['plan_name']),
-                 f"${plan['input_tokens']}", f"${plan['output_tokens']}"]
+                 price(plan['input_tokens']), price(plan['output_tokens'])]
                 for plan in rows
             ]
             widths = [max(len(cell) for cell in column) for column in zip(headers, *table)]
